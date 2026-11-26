@@ -1,0 +1,19 @@
+{
+    "name": "Geuneda.AdCapture.Editor",
+    "rootNamespace": "Geuneda.AdCapture",
+    "references": [
+        "Unity.Recorder.Editor",
+        "UnityEngine.UI"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
