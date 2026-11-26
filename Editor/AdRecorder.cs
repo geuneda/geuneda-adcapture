@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.IO;
+using System.Reflection;
 using UnityEditor.Recorder;
 using UnityEditor.Recorder.Encoder;
 using UnityEditor.Recorder.Input;
@@ -16,7 +18,24 @@ namespace Geuneda.AdCapture
 
         public string TempFile { get; private set; }
 
+        private static readonly FieldInfo SessionsField = typeof(RecorderController).GetField("m_RecordingSessions", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly PropertyInfo FramesProperty = typeof(UnityEditor.Recorder.Recorder).GetProperty("RecordedFramesCount", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
         public bool IsActive => _controller != null;
+
+        public int Frames
+        {
+            get
+            {
+                if (_controller == null || SessionsField == null || FramesProperty == null || !(SessionsField.GetValue(_controller) is IList sessions) || sessions.Count == 0)
+                {
+                    return -1;
+                }
+
+                var recorder = (sessions[0] as RecordingSession)?.recorder;
+                return recorder != null ? (int)FramesProperty.GetValue(recorder) : -1;
+            }
+        }
 
         public string Start(string output, int width, int height, int fps, bool mute)
         {

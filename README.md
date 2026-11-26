@@ -22,7 +22,7 @@ unity command script eval --project-path "$project" 'return Geuneda.AdCapture.Ad
 
 `Status()` 는 `진행: 3/10 zoom`, `완료 (녹화 저장: …)`, `실패: steps[4] tap: …` 형식의 문자열을 돌려줍니다. `Abort()` 는 녹화를 멈추고 카메라·시간·HUD 를 되돌립니다.
 
-배치 모드(`-batchmode`, `-nographics` 없음)에서도 Game 뷰 녹화가 동작합니다. 녹화 동안 Game 뷰 해상도는 스크립트의 `width`·`height` 로 바뀝니다. 에디터 창이 포커스를 잃어도 진행되게 하려면 플레이 시작 뒤 `Application.runInBackground = true` 로 둡니다.
+배치 모드(`-batchmode`, `-nographics` 없음)에서도 Game 뷰 녹화가 동작합니다. 부하가 크면 에디터가 Game 뷰를 매 루프 그리지 않아 프레임이 빠질 수 있어서, 녹화 중에는 Recorder 가 저장한 프레임 수보다 게임이 앞서면 `Time.timeScale` 을 0 으로 잠시 묶어 영상 프레임과 게임 시간을 1:1 로 맞춥니다. `wait` 와 `tap` 의 시간도 이 기준으로 흐릅니다. 녹화 동안 Game 뷰 해상도는 스크립트의 `width`·`height` 로 바뀝니다. 에디터 창이 포커스를 잃어도 진행되게 하려면 플레이 시작 뒤 `Application.runInBackground = true` 로 둡니다.
 
 ## 촬영 스크립트
 
@@ -57,10 +57,10 @@ unity command script eval --project-path "$project" 'return Geuneda.AdCapture.Ad
 |---|---|---|
 | `wait` | `seconds` | 녹화 시간 기준으로 기다립니다 |
 | `waitfor` | `target`, `seconds`(제한, 기본 10) | 경로의 오브젝트가 화면에 보일 때까지 기다립니다(활성, 켜진 Canvas, CanvasGroup 투명도 0 아님) |
-| `record` / `stop` | | 녹화를 시작하고 멈춥니다. `record` 는 Recorder 가 첫 프레임을 준비하는 3프레임을 기다린 뒤 다음 단계로 갑니다. 한 스크립트는 한 파일을 녹화합니다. `stop` 이 없으면 끝날 때 멈춥니다. 녹화 프레임이 0이거나 파일이 생기지 않으면 실패합니다 |
+| `record` / `stop` | | 녹화를 시작하고 멈춥니다. `record` 는 Recorder 가 첫 프레임을 저장할 때까지(실시간 최대 10초) 기다린 뒤 다음 단계로 갑니다. Recorder 프레임 수를 읽을 수 없거나, 첫 프레임이 오지 않거나, 녹화 중 10초 동안 프레임이 늘지 않으면 실패합니다. 한 스크립트는 한 파일을 녹화합니다. `stop` 이 없으면 끝날 때 멈춥니다. 완료 상태에 Recorder 가 처리한 프레임 수를 적으니 `ffprobe -count_frames` 의 영상 프레임 수와 대조합니다 |
 | `zoom` | `scale`, `focus`[x, y], `seconds` | 현재 `Camera.main` 을 기준으로 확대하며 `focus`(화면 0~1) 쪽으로 다가갑니다. `scale` 1 이 원래 화면입니다. 카메라가 바뀌면 새 카메라로 옮겨 붙고, 카메라가 없으면 실패합니다 |
 | `shake` | `amplitude`(화면 높이 비율), `seconds` | 줄어드는 흔들림을 시작하고 바로 다음 단계로 넘어갑니다 |
-| `timescale` | `scale`, `seconds` | `Time.timeScale` 을 부드럽게 바꿉니다. 끝나면 원래 값으로 돌아갑니다 |
+| `timescale` | `scale`, `seconds` | 게임 속도를 부드럽게 바꿉니다(1.5 면 영상에서 1.5배속). 녹화 중에는 프레임 동기화와 함께 적용합니다. 끝나면 원래 값으로 돌아갑니다 |
 | `hide` / `show` | `targets` | UI 는 CanvasGroup 투명도로, 월드 오브젝트는 Renderer 로 숨깁니다. 여러 경로가 같은 대상을 가리켜도 마지막 `show` 에서 원래 값으로 돌아옵니다. 끝나면 모두 되돌립니다 |
 | `tap` | `target` 또는 `focus`, `seconds` | 손가락이 다가가 누르는 동작을 보여 주고, 누르는 순간 그 좌표의 UI 레이캐스트 결과로 Down·Up·Click 을 보냅니다. `target` 이 다른 UI 에 가려 있거나 비활성이거나 사라졌으면 실패합니다 |
 | `action` | `name`, `args` | 게임이 등록한 동작을 부릅니다 |

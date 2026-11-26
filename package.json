@@ -2,7 +2,7 @@
   "name": "com.geuneda.adcapture",
   "displayName": "Ad Capture",
   "author": "geuneda",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "unity": "6000.0",
   "license": "MIT",
   "description": "에디터 플레이 모드에서 광고 촬영 스크립트(JSON)대로 카메라·시간·탭·HUD 를 연출하고 Unity Recorder 로 오디오가 포함된 MP4 를 녹화하는 에디터 도구입니다.",

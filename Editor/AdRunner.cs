@@ -9,7 +9,6 @@ namespace Geuneda.AdCapture
 {
     internal sealed class AdRunner
     {
-        private const int RecorderWarmupFrames = 3;
         private const float FileWaitSeconds = 10f;
 
         private readonly AdRecorder _recorder = new AdRecorder();
@@ -30,8 +29,21 @@ namespace Geuneda.AdCapture
         private string _saved;
         private bool _hooked;
         private bool _done;
+        private float _scale;
+        private bool _gating;
+        private bool _held;
+        private int _advanced;
+        private int _frameBase;
+        private int _lastFrames;
+        private int _tickFrames;
+        private float _lastFrameAt;
+        private int _savedFrames;
 
-        private static float Delta => Time.captureDeltaTime > 0f ? Time.captureDeltaTime : Time.unscaledDeltaTime;
+        private const float StallSeconds = 10f;
+
+        private static float FrameTime => Time.captureDeltaTime > 0f ? Time.captureDeltaTime : Time.unscaledDeltaTime;
+
+        private float Delta => _gating ? _tickFrames * FrameTime : FrameTime;
 
         public void Begin(AdShot shot, Sprite hand, IReadOnlyDictionary<string, Func<string[], string>> actions)
         {
@@ -40,6 +52,7 @@ namespace Geuneda.AdCapture
                 _shot = shot;
                 _actions = actions;
                 _timeScale = Time.timeScale;
+                _scale = _timeScale;
                 _root = new GameObject("AdCapture") { hideFlags = HideFlags.HideInHierarchy | HideFlags.DontSave };
                 UnityEngine.Object.DontDestroyOnLoad(_root);
                 _tap = new AdTap(hand, new Vector2(shot.handTip[0], shot.handTip[1]), shot.handSize, _root.transform);
@@ -77,6 +90,11 @@ namespace Geuneda.AdCapture
 
             try
             {
+                if (_gating && !Gate())
+                {
+                    return;
+                }
+
                 while (_stack.Count > 0)
                 {
                     var top = _stack.Peek();
@@ -99,11 +117,48 @@ namespace Geuneda.AdCapture
                 {
                     ApplyCamera();
                 }
+
+                if (_gating)
+                {
+                    Time.timeScale = _held ? 0f : _scale;
+                }
             }
             catch (Exception e)
             {
                 Finish("실패: " + e.GetBaseException().Message);
             }
+        }
+
+        private bool Gate()
+        {
+            var frames = _recorder.Frames;
+            if (frames < 0)
+            {
+                Finish("실패: Recorder 프레임 수를 읽지 못해 녹화를 멈췄습니다.");
+                return false;
+            }
+
+            var now = Time.realtimeSinceStartup;
+            _tickFrames = Math.Max(0, frames - _lastFrames);
+            if (_tickFrames > 0)
+            {
+                _lastFrames = frames;
+                _lastFrameAt = now;
+            }
+            else if (now - _lastFrameAt > StallSeconds)
+            {
+                Finish($"실패: Recorder 가 {StallSeconds}초 동안 프레임을 저장하지 않았습니다.");
+                return false;
+            }
+
+            if (!_held)
+            {
+                _advanced++;
+            }
+
+            _held = _advanced > frames - _frameBase;
+            Time.timeScale = _held ? 0f : _scale;
+            return true;
         }
 
         private IEnumerator Play()
@@ -162,7 +217,14 @@ namespace Geuneda.AdCapture
 
                     break;
                 case "timescale":
-                    yield return Ease(step.seconds, Time.timeScale, step.scale, v => Time.timeScale = v);
+                    yield return Ease(step.seconds, _scale, step.scale, v =>
+                    {
+                        _scale = v;
+                        if (!_gating)
+                        {
+                            Time.timeScale = v;
+                        }
+                    });
                     break;
                 case "hide":
                     foreach (var path in step.targets)
@@ -197,15 +259,34 @@ namespace Geuneda.AdCapture
 
             _recordedFrames = 0;
             _recording = true;
-            for (var i = 0; i < RecorderWarmupFrames; i++)
+            var until = Time.realtimeSinceStartup + StallSeconds;
+            while (_recorder.Frames == 0 && Time.realtimeSinceStartup < until)
             {
                 yield return null;
             }
+
+            var frames = _recorder.Frames;
+            if (frames <= 0)
+            {
+                _error = frames < 0 ? "Recorder 프레임 수를 읽을 수 없어 영상과 게임 시간을 맞출 수 없습니다." : $"Recorder 가 {StallSeconds}초 안에 첫 프레임을 저장하지 않았습니다.";
+                yield break;
+            }
+
+            _frameBase = frames;
+            _lastFrames = frames;
+            _lastFrameAt = Time.realtimeSinceStartup;
+            _advanced = 0;
+            _held = false;
+            _gating = true;
         }
 
         private IEnumerator StopRecording()
         {
             _recording = false;
+            _gating = false;
+            _held = false;
+            Time.timeScale = _scale;
+            _savedFrames = _recorder.Frames;
             _recorder.Stop();
             var temp = _recorder.TempFile;
             if (_recordedFrames == 0)
@@ -413,6 +494,8 @@ namespace Geuneda.AdCapture
             }
 
             _done = true;
+            _gating = false;
+            _held = false;
             var notes = new List<string>();
             Try(notes, () => _stack.Clear());
             Try(notes, () =>
@@ -424,7 +507,18 @@ namespace Geuneda.AdCapture
                 }
             });
             Try(notes, _rig.Restore);
-            Try(notes, () => Time.timeScale = _timeScale);
+            Try(notes, () =>
+            {
+                var original = _timeScale;
+                Time.timeScale = original;
+                EditorApplication.delayCall += () =>
+                {
+                    if (EditorApplication.isPlaying)
+                    {
+                        Time.timeScale = original;
+                    }
+                };
+            });
             Try(notes, _hider.RestoreAll);
             Try(notes, () => _tap?.Dispose());
             Try(notes, () =>
@@ -445,7 +539,7 @@ namespace Geuneda.AdCapture
 
             if (_saved != null)
             {
-                notes.Insert(0, $"녹화 저장: {_saved}");
+                notes.Insert(0, $"녹화 저장: {_saved}, Recorder {_savedFrames}프레임");
             }
 
             AdCapture.State = notes.Count > 0 ? $"{message} ({string.Join(" / ", notes)})" : message;
